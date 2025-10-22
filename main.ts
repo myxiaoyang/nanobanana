@@ -10,7 +10,6 @@ function createJsonErrorResponse(message: string, statusCode = 500) {
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
-      // 预防浏览器 CORS 限制时缺少这些头
       "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
@@ -30,31 +29,34 @@ async function callOpenRouter(
   if (!apiKey) {
     throw new Error("callOpenRouter received an empty apiKey.");
   }
-  const openrouterPayload = { model: "google/gemini-2.5-flash-image-preview", messages };
-  console.log("Sending payload to OpenRouter:", JSON.stringify(openrouterPayload, null, 2));
+
+  const openrouterPayload = {
+    model: "google/gemini-2.5-flash-image-preview",
+    messages,
+  };
+
   const apiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(openrouterPayload),
   });
+
   if (!apiResponse.ok) {
     const errorBody = await apiResponse.text();
     throw new Error(`OpenRouter API error: ${apiResponse.status} ${apiResponse.statusText} - ${errorBody}`);
   }
+
   const responseData = await apiResponse.json();
-  console.log("OpenRouter Response:", JSON.stringify(responseData, null, 2));
   const message = responseData.choices?.[0]?.message;
 
-  // 不同返回结构的兼容处理（可能需要根据实际返回调整）
-  // 1) images array with image_url.url
   if (message?.images?.[0]?.image_url?.url) {
     return { type: "image", content: message.images[0].image_url.url };
   }
-  // 2) content is base64 data URL
+
   if (typeof message?.content === "string" && message.content.startsWith("data:image/")) {
     return { type: "image", content: message.content };
   }
-  // 3) content is plain text (错误或提示)
+
   if (typeof message?.content === "string" && message.content.trim() !== "") {
     return { type: "text", content: message.content };
   }
@@ -77,8 +79,6 @@ async function callModelScope(
     "Content-Type": "application/json",
   };
 
-  console.log(`[ModelScope] Submitting task for model: ${model}`);
-
   const generationResponse = await fetch(`${base_url}v1/images/generations`, {
     method: "POST",
     headers: { ...common_headers, "X-ModelScope-Async-Mode": "true" },
@@ -91,44 +91,41 @@ async function callModelScope(
   }
 
   const genJson = await generationResponse.json();
-  const { task_id } = genJson;
+  const task_id = genJson?.task_id;
   if (!task_id) {
     throw new Error("ModelScope API did not return a task_id.");
   }
-  console.log(`[ModelScope] Task submitted. Task ID: ${task_id}`);
 
   const pollingIntervalSeconds = 5;
   const maxRetries = Math.ceil(timeoutSeconds / pollingIntervalSeconds);
-  console.log(`[ModelScope] Task timeout set to ${timeoutSeconds}s, polling a max of ${maxRetries} times.`);
 
   for (let i = 0; i < maxRetries; i++) {
     await sleep(pollingIntervalSeconds * 1000);
-    console.log(`[ModelScope] Polling task status... Attempt ${i + 1}/${maxRetries}`);
+
     const statusResponse = await fetch(`${base_url}v1/tasks/${task_id}`, {
       headers: { ...common_headers, "X-ModelScope-Task-Type": "image_generation" },
     });
+
     if (!statusResponse.ok) {
-      console.error(`[ModelScope] Failed to get task status. Status: ${statusResponse.status}`);
+      // 非致命：继续下一次重试
       continue;
     }
+
     const data = await statusResponse.json();
 
     if (data.task_status === "SUCCEED") {
-      console.log("[ModelScope] Task Succeeded.");
       if (data.output?.images?.[0]?.url) {
         return { imageUrl: data.output.images[0].url };
-      } else if (data.output_images?.[0]) {
+      } else if (Array.isArray(data.output_images) && data.output_images[0]) {
         return { imageUrl: data.output_images[0] };
       } else {
         throw new Error("ModelScope task succeeded but returned no images.");
       }
     } else if (data.task_status === "FAILED") {
-      console.error("[ModelScope] Task Failed.", data);
       throw new Error(`ModelScope task failed: ${data.message || "Unknown error"}`);
-    } else {
-      // 仍在运行（如 "RUNNING", "PENDING" 等），继续轮询
-      console.log(`[ModelScope] Current status: ${data.task_status}`);
     }
+
+    // 如果是 PENDING / RUNNING / 等其他状态，继续等待下一轮
   }
 
   throw new Error(`ModelScope task timed out after ${timeoutSeconds} seconds.`);
@@ -137,12 +134,10 @@ async function callModelScope(
 // =======================================================
 // 主服务逻辑
 // =======================================================
-
-// 定义 port
 const port = Deno.env.get("PORT") ? Number(Deno.env.get("PORT")) : 8080;
 
 serve(
-  async (req) => {
+  async (req: Request) => {
     const pathname = new URL(req.url).pathname;
 
     // CORS preflight
@@ -171,12 +166,11 @@ serve(
       });
     }
 
-    if (pathname === "/generate") {
+    if (pathname === "/generate" && req.method === "POST") {
       try {
         const requestData = await req.json();
         const { model, apikey, prompt, images, parameters, timeout } = requestData;
 
-        // nanobanana -> 使用 OpenRouter (你的自定义逻辑)
         if (model === "nanobanana") {
           const openrouterApiKey = apikey || Deno.env.get("OPENROUTER_API_KEY");
           if (!openrouterApiKey) {
@@ -186,14 +180,12 @@ serve(
             return createJsonErrorResponse("Prompt is required.", 400);
           }
 
-          // 构造 OpenRouter 的 messages payload
           const contentPayload: any[] = [{ type: "text", text: prompt }];
           if (images && Array.isArray(images) && images.length > 0) {
             const imageParts = images.map((img: string) => ({ type: "image_url", image_url: { url: img } }));
             contentPayload.push(...imageParts);
           }
 
-          // 调用 OpenRouter
           const result = await callOpenRouter(contentPayload, String(openrouterApiKey));
 
           if (result.type === "image") {
@@ -201,10 +193,9 @@ serve(
               headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
             });
           } else {
-            return createJsonErrorResponse(`Model returned text instead of an image: \"${result.content}\"`, 400);
+            return createJsonErrorResponse(`Model returned text instead of an image: "${result.content}"`, 400);
           }
         } else {
-          // 走 ModelScope 分支
           const modelscopeApiKey = apikey || Deno.env.get("MODELSCOPE_API_KEY");
           if (!modelscopeApiKey) {
             return createJsonErrorResponse("ModelScope API key is not set.", 401);
@@ -220,17 +211,16 @@ serve(
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
           });
         }
-      } catch (error: any) {
-        console.error("Error handling /generate request:", error);
-        return createJsonErrorResponse(error?.message || String(error), 500);
+      } catch (error) {
+        return createJsonErrorResponse(String(error?.message ?? error), 500);
       }
     }
 
-    // 处理静态文件（fsRoot 可根据需要修改）
+    // 静态文件处理
     return serveDir(req, { fsRoot: "static", urlRoot: "", showDirListing: true, enableCors: true });
   },
   {
-    port: port,
+    port,
     hostname: "0.0.0.0",
   },
 );
