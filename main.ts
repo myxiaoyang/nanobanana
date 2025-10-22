@@ -152,7 +152,7 @@ section_end: OMIT_NEXT_CODE_BLOCK
                 if (!modelscopeApiKey) { return createJsonErrorResponse("ModelScope API key is not set.", 401); }
                 if (!parameters?.prompt) { return createJsonErrorResponse("Positive prompt is required for ModelScope models.", 400); }
                 
-                const timeoutSeconds = timeout || (model.includes('Qwen') ? 120 : 180);s
+                const timeoutSeconds = timeout || (model.includes('Qwen') ? 120 : 180);
                 const result = await callModelScope(model, modelscopeApiKey, parameters, timeoutSeconds);
 
                 return new Response(JSON.stringify(result), {
