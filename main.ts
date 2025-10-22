@@ -96,6 +96,11 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
 // =======================================================
 // 主服务逻辑
 // =======================================================
+// [新添加] 从环境变量读取端口，否则默认为 8080
+const port = Deno.env.get("PORT") ? Number(Deno.env.get("PORT")) : 8080;
+
+serve(async (req) => {
+// ... (您现有的所有路由逻辑) ...
 serve(async (req) => {
     const pathname = new URL(req.url).pathname;
     
@@ -166,5 +171,8 @@ serve(async (req) => {
         }
     }
 
-    return serveDir(req, { fsRoot: "static", urlRoot: "", showDirListing: true, enableCors: true });
+    return serveDir(req,{
+  port: port,
+  hostname: "0.0.0.0" // <-- 这就是关键的修复！
+});
 });
