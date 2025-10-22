@@ -83,7 +83,9 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
             } else {
                 throw new Error("ModelScope task succeeded but returned no images.");
             }
+        // ++++++++++++++++ [这就是我之前一直遗漏的 '}' 符号] ++++++++++++++++++
         } else if (data.task_status === "FAILED") {
+        // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             console.error("[ModelScope] Task Failed.", data);
             throw new Error(`ModelScope task failed: ${data.message || 'Unknown error'}`);
         }
@@ -103,11 +105,11 @@ serve(async (req) => {
     
     if (req.method === 'OPTIONS') { 
         return new Response(null, { 
-            status: 204,s
+            status: 204, 
             headers: { 
-                "Access-Control-Allow-Origin": "*", 
-                "Access-Control-Allow-Methods": "POST, GET, OPTIONS", 
-                "Access-Control-Allow-Headers": "Content-Type, Authorization" 
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization"
             } 
         }); 
     }
@@ -136,14 +138,13 @@ serve(async (req) => {
                 if (!openrouterApiKey) { return createJsonErrorResponse("OpenRouter API key is not set.", 500); }
                 if (!prompt) { return createJsonErrorResponse("Prompt is required.", 400); }
                 const contentPayload: any[] = [{ type: "text", text: prompt }];
-s
+                if (images && Array.isArray(images) && images.length > 0) {
                     const imageParts = images.map(img => ({ type: "image_url", image_url: { url: img } }));
                     contentPayload.push(...imageParts);
-  s
-                const webUiMessages = [{ role: "user", content: contentPayload }];
-                const result = await callOpenRouter(webUiMessages, openrouterApiKey);
+                }
+        _hidden_
                 if (result.type === 'image') {
-          _hidden_
+                    return new Response(JSON.stringify({ imageUrl: result.content }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
                 } else {
                     return createJsonErrorResponse(`Model returned text instead of an image: "${result.content}"`, 400);
                 }
