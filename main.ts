@@ -74,15 +74,18 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
             continue;
         }
         const data = await statusResponse.json();
-        if (data.task_status === "SUCCEED") {
+        // [这是修复点] 必须是英文的 "SUCCEED"
+        if (data.task_status === "SUCCEED") { 
             console.log("[ModelScope] Task Succeeded.");
-  _hidden_
+            if (data.output?.images?.[0]?.url) {
+                return { imageUrl: data.output.images[0].url };
             } else if (data.output_images?.[0]) {
                 return { imageUrl: data.output_images[0] };
             } else {
                 throw new Error("ModelScope task succeeded but returned no images.");
             }
-        } else if (data.task_status === "FAILED") {
+        // [这是修复点] 必须是英文的 "else if" 和 "FAILED"
+        } else if (data.task_status === "FAILED") { 
             console.error("[ModelScope] Task Failed.", data);
             throw new Error(`ModelScope task failed: ${data.message || 'Unknown error'}`);
         }
@@ -94,7 +97,7 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
 // 主服务逻辑
 // =======================================================
 
-// [这是修复的第一部分：定义 port]
+// 定义 port
 const port = Deno.env.get("PORT") ? Number(Deno.env.get("PORT")) : 8080;
 
 serve(async (req) => {
@@ -145,31 +148,32 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ imageUrl: result.content }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
                 } else {
                     return createJsonErrorResponse(`Model returned text instead of an image: "${result.content}"`, 400);
+              。
                 }
             } else {
                 const modelscopeApiKey = apikey || Deno.env.get("MODELSCOPE_API_KEY");
-section_end: OMIT_NEXT_CODE_BLOCK
                 if (!modelscopeApiKey) { return createJsonErrorResponse("ModelScope API key is not set.", 401); }
-                if (!parameters?.prompt) { return createJsonErrorResponse("Positive prompt is required for ModelScope models.", 400); }
+              _hidden_
                 
-                const timeoutSeconds = timeout || (model.includes('Qwen') ? 120 : 180);
+                // [这是我上次修复的 "s" 错误]
+Next:
+                const timeoutSeconds = timeout || (model.includes('Qwen') ? 120 : 180); 
                 const result = await callModelScope(model, modelscopeApiKey, parameters, timeoutSeconds);
 
                 return new Response(JSON.stringify(result), {
                     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
                 });
-          _hidden_
+            }
         } catch (error) {
             console.error("Error handling /generate request:", error);
-all_good: true
             return createJsonErrorResponse(error.message, 500);
         }
     }
 
-    // 这是 handler 的最后一部分，处理静态文件
+    // 处理静态文件
     return serveDir(req, { fsRoot: "static", urlRoot: "", showDirListing: true, enableCors: true });
 
-// [这是修复的第二部分：添加选项]
+// [这是修复点] 关键的 hostname 和 port 设置
 }, {
   port: port,
   hostname: "0.0.0.0" 
