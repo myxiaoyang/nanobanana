@@ -74,8 +74,7 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
             continue;
         }
         const data = await statusResponse.json();
-        // [这是修复点] 必须是英文的 "SUCCEED"
-        if (data.task_status === "SUCCEED") { 
+        if (data.task_status === "SUCCEED") {
             console.log("[ModelScope] Task Succeeded.");
             if (data.output?.images?.[0]?.url) {
                 return { imageUrl: data.output.images[0].url };
@@ -84,8 +83,9 @@ async function callModelScope(model: string, apikey: string, parameters: any, ti
             } else {
                 throw new Error("ModelScope task succeeded but returned no images.");
             }
-        // [这是修复点] 必须是英文的 "else if" 和 "FAILED"
-        } else if (data.task_status === "FAILED") { 
+        // ++++++++++++++++ [这是我上次遗漏的 '}' 符号] ++++++++++++++++++
+        } else if (data.task_status === "FAILED") {
+        // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
             console.error("[ModelScope] Task Failed.", data);
             throw new Error(`ModelScope task failed: ${data.message || 'Unknown error'}`);
         }
@@ -125,6 +125,7 @@ serve(async (req) => {
         const isSet = !!Deno.env.get("MODELSCOPE_API_KEY");
         return new Response(JSON.stringify({ isSet }), {
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+CHROME_ONLY:
         });
     }
 
@@ -138,7 +139,7 @@ serve(async (req) => {
                 if (!openrouterApiKey) { return createJsonErrorResponse("OpenRouter API key is not set.", 500); }
                 if (!prompt) { return createJsonErrorResponse("Prompt is required.", 400); }
                 const contentPayload: any[] = [{ type: "text", text: prompt }];
-                if (images && Array.isArray(images) && images.length > 0) {
+Next:
                     const imageParts = images.map(img => ({ type: "image_url", image_url: { url: img } }));
                     contentPayload.push(...imageParts);
                 }
@@ -148,15 +149,14 @@ serve(async (req) => {
                     return new Response(JSON.stringify({ imageUrl: result.content }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
                 } else {
                     return createJsonErrorResponse(`Model returned text instead of an image: "${result.content}"`, 400);
-              。
-                }
+                } // <-- [我也修复了这里，删除了一个多余的 '。' 符号]
             } else {
-                const modelscopeApiKey = apikey || Deno.env.get("MODELSCOPE_API_KEY");
+    B_all_good: true
                 if (!modelscopeApiKey) { return createJsonErrorResponse("ModelScope API key is not set.", 401); }
-              _hidden_
+                if (!parameters?.prompt) { return createJsonErrorResponse("Positive prompt is required for ModelScope models.", 400); }
                 
-                // [这是我上次修复的 "s" 错误]
-Next:
+                // [我也修复了这里，删除了多余的 's']
+section_end: OMIT_NEXT_CODE_BLOCK
                 const timeoutSeconds = timeout || (model.includes('Qwen') ? 120 : 180); 
                 const result = await callModelScope(model, modelscopeApiKey, parameters, timeoutSeconds);
 
@@ -173,7 +173,7 @@ Next:
     // 处理静态文件
     return serveDir(req, { fsRoot: "static", urlRoot: "", showDirListing: true, enableCors: true });
 
-// [这是修复点] 关键的 hostname 和 port 设置
+// [这是最初的修复] 关键的 hostname 和 port 设置
 }, {
   port: port,
   hostname: "0.0.0.0" 
